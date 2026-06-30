@@ -592,4 +592,4 @@ We welcome contributions to the pipeline connectors and adapters!
 *   [Google API Gmail SDK](https://developers.google.com/gmail/api/guides)
 *   [Microsoft Graph SDK Reference](https://learn.microsoft.com/en-us/graph/use-the-api)
 *   [Celery Worker Queue Manual](https://docs.celeryq.dev/en/stable/)
-*   [Ollama Local LLM Quickstart](https://github.com/ollama/ollama)
+*   [Ollama Local LLM Quickstart](https://github.com/ollama/ollama) 
