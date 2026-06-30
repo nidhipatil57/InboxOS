@@ -39,6 +39,24 @@ async function main() {
 
       console.log(`[Worker] Email updated successfully!`);
 
+      // 4. Extract and save actions
+      console.log(`[Worker] Extracting actions for: "${email.subject}"`);
+      const actions = await AIService.extractActions(email.subject, email.body);
+      
+      if (actions && actions.length > 0) {
+        console.log(`[Worker] Found ${actions.length} action items. Saving...`);
+        await prisma.actionItem.createMany({
+          data: actions.map((task) => ({
+            emailId: email.id,
+            taskDescription: task,
+            isCompleted: false,
+          })),
+        });
+        console.log(`[Worker] Saved action items successfully.`);
+      } else {
+        console.log(`[Worker] No action items extracted.`);
+      }
+
     } catch (error: any) {
       console.error(`[Worker] Classification failed for emailId ${emailId}:`, error.message || error);
       

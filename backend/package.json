@@ -7,6 +7,9 @@
     "build": "tsc",
     "migrate:dev": "prisma migrate dev",
     "test:classify": "ts-node src/test-classifier.ts",
+    "test:summary": "ts-node src/test-summary.ts",
+    "test:actions": "ts-node src/test-action-items.ts",
+    "test:embeddings": "ts-node src/test-embeddings.ts",
     "worker": "ts-node src/worker.ts",
     "start": "ts-node src/server.ts",
     "test:worker": "ts-node src/test-worker.ts"
