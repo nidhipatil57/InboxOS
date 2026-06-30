@@ -359,5 +359,162 @@ Provide a confidence score between 0.0 and 1.0.`;
 
     throw new Error('Unknown error during Gemini thread summarization.');
   }
+
+  /**
+   * Extracts explicit, concrete tasks from an email subject and body.
+   * Only returns actionable tasks requested in the email. Returns an empty array if none found.
+   */
+  public static async extractActions(subject: string, body: string): Promise<string[]> {
+    const provider = process.env.AI_PROVIDER || 'openai';
+
+    if (provider === 'gemini') {
+      return this.extractActionsWithGemini(subject, body);
+    } else {
+      return this.extractActionsWithOpenAI(subject, body);
+    }
+  }
+
+  private static async extractActionsWithOpenAI(subject: string, body: string): Promise<string[]> {
+    const openai = this.getOpenAI();
+
+    const systemPrompt = `You are an expert AI email task extraction assistant. Your job is to analyze the email subject line and body text, and extract all explicit, concrete tasks (e.g., 'Send the report by Friday') mentioned.
+Do not infer, assume, or fabricate tasks that are not explicitly and concretely requested.
+If there are no explicit, concrete tasks, return an empty array.`;
+
+    const userPrompt = `Subject: ${subject}\nBody:\n${body}`;
+
+    const maxAttempts = 5;
+    let attempt = 0;
+    let delay = 1000;
+
+    while (attempt < maxAttempts) {
+      try {
+        const response = await openai.chat.completions.create({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          response_format: {
+            type: 'json_schema',
+            json_schema: {
+              name: 'task_extraction',
+              strict: true,
+              schema: {
+                type: 'object',
+                properties: {
+                  actions: {
+                    type: 'array',
+                    items: {
+                      type: 'string',
+                    },
+                  },
+                },
+                required: ['actions'],
+                additionalProperties: false,
+              },
+            },
+          },
+        });
+
+        const rawContent = response.choices[0]?.message?.content;
+        if (!rawContent) {
+          throw new Error('OpenAI returned an empty action extraction response.');
+        }
+
+        const result = JSON.parse(rawContent) as { actions: string[] };
+        return result.actions || [];
+
+      } catch (error: any) {
+        attempt++;
+        const isRateLimit = error.status === 429 || (error.message && error.message.includes('429'));
+
+        if (isRateLimit && attempt < maxAttempts) {
+          console.warn(
+            `[AIService] OpenAI Rate limit hit (429) during action extraction. Retrying in ${delay}ms... (Attempt ${attempt}/${maxAttempts})`
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          delay *= 2;
+        } else {
+          console.error(`[AIService] OpenAI action extraction failed on attempt ${attempt}:`, error);
+          if (attempt >= maxAttempts) {
+            throw new Error(`Failed to extract actions via OpenAI after ${maxAttempts} attempts: ${error.message || error}`);
+          }
+          throw error;
+        }
+      }
+    }
+
+    throw new Error('Unknown error during OpenAI action extraction.');
+  }
+
+  private static async extractActionsWithGemini(subject: string, body: string): Promise<string[]> {
+    const ai = this.getGemini();
+
+    const systemInstruction = `You are an expert AI email task extraction assistant. Your job is to analyze the email subject line and body text, and extract all explicit, concrete tasks (e.g., 'Send the report by Friday') mentioned.
+Do not infer, assume, or fabricate tasks that are not explicitly and concretely requested.
+If there are no explicit, concrete tasks, return an empty array.`;
+
+    const userContent = `Subject: ${subject}\nBody:\n${body}`;
+
+    const maxAttempts = 5;
+    let attempt = 0;
+    let delay = 1000;
+
+    while (attempt < maxAttempts) {
+      try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: userContent,
+          config: {
+            systemInstruction: systemInstruction,
+            responseMimeType: 'application/json',
+            responseSchema: {
+              type: 'OBJECT',
+              properties: {
+                actions: {
+                  type: 'ARRAY',
+                  items: {
+                    type: 'STRING',
+                  },
+                },
+              },
+              required: ['actions'],
+            },
+          },
+        });
+
+        const rawContent = response.text;
+        if (!rawContent) {
+          throw new Error('Gemini returned an empty action extraction response.');
+        }
+
+        const result = JSON.parse(rawContent) as { actions: string[] };
+        return result.actions || [];
+
+      } catch (error: any) {
+        attempt++;
+        const isRateLimit =
+          error.status === 429 ||
+          (error.message && (error.message.includes('429') || error.message.includes('ResourceExhausted') || error.message.includes('Quota exceeded') || error.message.includes('quota')));
+
+        if (isRateLimit && attempt < maxAttempts) {
+          console.warn(
+            `[AIService] Gemini Rate limit hit (429/ResourceExhausted) during action extraction. Retrying in ${delay}ms... (Attempt ${attempt}/${maxAttempts})`
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          delay *= 2;
+        } else {
+          console.error(`[AIService] Gemini action extraction failed on attempt ${attempt}:`, error);
+          if (attempt >= maxAttempts) {
+            throw new Error(`Failed to extract actions via Gemini after ${maxAttempts} attempts: ${error.message || error}`);
+          }
+          throw error;
+        }
+      }
+    }
+
+    throw new Error('Unknown error during Gemini action extraction.');
+  }
 }
 
